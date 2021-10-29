@@ -38,7 +38,7 @@ function useSignal() {
 }
 
 function randomInt(min: number, max: number) {
-  return min + Math.round(Math.random() * (max - min))
+  return Math.round(min + (Math.random() * (max - min)))
 }
 
 function coordsAreEqual(a: number[], b: number[]) {
@@ -114,11 +114,7 @@ class Map {
     this.height = height
     this.width = width
     const dest = [randomInt(0, width*1/4), randomInt(0, height-1)]
-    let start: number[] = [randomInt(width*3/4, width-1), randomInt(0, height-1)] 
-
-    while (coordsAreEqual(start, dest)) {
-      start = [randomInt(0, width), randomInt(0, height)] 
-    }
+    const start = [randomInt(width*3/4, width-1), randomInt(0, height-1)] 
 
     let generator: (x: number, y: number) => any = () => {}
     switch (generatorType) {
@@ -133,7 +129,6 @@ class Map {
       default: 
         generator = () => Math.random() < 1/3
     }
-
     this.start = start
     this.dest = dest
     this.data = Array(height).fill(0).map((_,y) => (

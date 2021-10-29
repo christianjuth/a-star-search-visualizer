@@ -411,14 +411,14 @@ function App() {
 
         <select value={mapType} onChange={e => setMapType(e.target.value)} disabled={map.loading}>
           {['random', 'perlin', 'maze'].map(option => (
-            <option key={option}>{option}</option>
+            <option key={option} value={option}>Map type: {option}</option>
           ))}
         </select>
 
         <select onChange={e => setSpeed(parseInt(e.target.value))} disabled={map.loading}>
           {Array(20).fill(0).map((_,i) => (
             <option key={i} value={i}>
-              {i}
+              Speed: {i}
             </option>
           ))}
         </select>

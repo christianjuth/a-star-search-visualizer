@@ -58,15 +58,6 @@ class Node {
   highlighted = false
   newNode = true
 
-  getKey() {
-    let key = ""
-    key += this.newNode ? 'N' : 'n'
-    key += this.isVisited ? 'V' : 'v'
-    key += this.highlighted ? 'H' : 'h'
-    this.newNode = false
-    return key
-  }
-
   constructor({ isStart, isDestination, x, y, generator }: { isStart?: boolean, isDestination?: boolean, x: number, y: number, generator: (x: number, y: number) => boolean }) {
     this.x = x
     this.y = y
@@ -109,10 +100,13 @@ class Map {
     change: []
   }
   stop = false
+  speedMultiplier: number
+  updatedNodes: InstanceType<typeof Node>[]
 
   constructor(height = 50, width = 50, generatorType = 'perlin') {
     this.height = height
     this.width = width
+    this.speedMultiplier = Math.round((height * width) / 35000)
     const dest = [randomInt(0, width*1/4), randomInt(0, height-1)]
     const start = [randomInt(width*3/4, width-1), randomInt(0, height-1)] 
 
@@ -142,10 +136,19 @@ class Map {
         })
       ) 
     ))
+    this.updatedNodes = this.data.flat()
 
     this.calcuateManhattanDistances()
     this.loading = false
     this.dispatchEvent('change')
+  }
+
+  render(fn: (node: InstanceType<typeof Node>) => any) {
+    const nodes = this.updatedNodes
+    this.updatedNodes = []
+    for (const node of nodes) {
+      fn(node)
+    }
   }
 
   getNeightbords([x, y]: number[]) {
@@ -186,11 +189,10 @@ class Map {
       return
     }
 
-    this.reset()
-
+    speed *= this.speedMultiplier
     // Prevent react updates while seraching
     this.loading = true
-    this.dispatchEvent('change')
+    this.reset()
 
     const heap = new Heap((a: InstanceType<typeof Node>, b: InstanceType<typeof Node>) => {
       return a.getValue() - b.getValue()
@@ -199,6 +201,7 @@ class Map {
     start.gValue = 0
     start.isVisited = true
     heap.push(start)
+    this.updatedNodes.push(start)
     let heapLength = 1
     let destNode: InstanceType<typeof Node> | null = null
 
@@ -235,6 +238,7 @@ class Map {
           neighbor.gValue = neightborGValue
           heap.push(neighbor)
           heapLength += 1
+          this.updatedNodes.push(neighbor)
         }
       }
 
@@ -255,6 +259,7 @@ class Map {
     let crnt: typeof destNode | null = destNode
     
     while (crnt && prevNodes[crnt.getId()]) {
+      this.updatedNodes.push(crnt)
       if (this.stop) {
         this.loading = false
         this.stop = false
@@ -279,11 +284,11 @@ class Map {
   }
 
   forwardSearch(speed: number) {
-    this.search(this.start, this.dest, speed)
+    return this.search(this.start, this.dest, speed)
   }
 
   backwardSearch(speed: number) {
-    this.search(this.dest, this.start, speed)
+    return this.search(this.dest, this.start, speed)
   }
 
   dispatchEvent(type = 'change') {
@@ -302,8 +307,10 @@ class Map {
 
   reset() {
     for (const node of this.data.flat()) {
+      this.updatedNodes.push(node)
       node.reset()
     }
+    this.dispatchEvent('change')
   }
 
   stopSearch() {
@@ -311,12 +318,7 @@ class Map {
   }
 }
 
-const dict: Record<string, string> = {}
 function drawNode(ctx: CanvasRenderingContext2D, node: InstanceType<typeof Node>) {
-  if (dict[node.getId()] === node.getKey()) {
-    return
-  }
-
   let backgroundColor = "black"
   if (node.highlighted) {
     backgroundColor = "red"
@@ -332,25 +334,22 @@ function drawNode(ctx: CanvasRenderingContext2D, node: InstanceType<typeof Node>
 
   ctx.fillStyle = backgroundColor;
   ctx.fillRect(node.x * BLOCK_SIZE, node.y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-
-  dict[node.getId()] = node.getKey()
 }
 
 function CanvasGrid({
   map,
 }: {
-  map: InstanceType<typeof Node>[][]
+  map: InstanceType<typeof Map>
 }) {
-  const height = (map.length) * BLOCK_SIZE
-  const width = (map[0]?.length ?? 0) * BLOCK_SIZE
+  const data = map.data
+  const height = (data.length) * BLOCK_SIZE
+  const width = (data[0]?.length ?? 0) * BLOCK_SIZE
   const ref = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const ctx = ref.current?.getContext("2d")
     if (ctx) {
-      for (const node of map.flat()) {
-        drawNode(ctx!, node)
-      }
+      map.render((node) => drawNode(ctx!, node))
     }
   })
 
@@ -387,18 +386,26 @@ function App() {
 
   return (
     <Page style={{minHeight: pageHeight}}>
-      <CanvasGrid map={map.data} />
+      <CanvasGrid map={map} />
 
       <FlexRow style={{marginTop: 5}}>
         <button 
-          onClick={() => map.forwardSearch(speed)}
+          onClick={async () => {
+            if (!Array.isArray(await map.forwardSearch(speed))) {
+              alert('destination unreachable')
+            }
+          }}
           disabled={map.loading}
         >
           Forward search
         </button>
 
         <button 
-          onClick={() => map.backwardSearch(speed)}
+          onClick={async () => {
+            if (!Array.isArray(await map.backwardSearch(speed))) {
+              alert('destination unreachable')
+            }
+          }}
           disabled={map.loading}
         >
           Backward search
@@ -411,7 +418,7 @@ function App() {
         </select>
 
         <select onChange={e => setSpeed(parseInt(e.target.value))} disabled={map.loading}>
-          {Array(20).fill(0).map((_,i) => (
+          {Array(21).fill(0).map((_,i) => (
             <option key={i} value={i}>
               Speed: {i}
             </option>

@@ -218,7 +218,7 @@ class Map {
         this.loading = false
         this.stop = false
         this.dispatchEvent('change')
-        return
+        return []
       }
 
       const crnt = heap.pop()
@@ -364,8 +364,9 @@ function CanvasGrid({
 
 function App() {
   const [,refresh] = useSignal()
+  const [mapKey,refreshMap] = useSignal()
   const [mapType, setMapType] = useState('random')
-  const [speed, setSpeed] = useState(0)
+  const [speed, setSpeed] = useState(1)
   const pageHeight = use100vh() ?? 0
   const rows = Math.floor(pageHeight / BLOCK_SIZE)
   const cols = Math.floor((typeof window !== 'undefined' ? window.innerWidth : 0) / BLOCK_SIZE)
@@ -376,7 +377,7 @@ function App() {
       Math.max(cols - 20, 0), 
       mapType
     ),
-    [mapType, rows, cols]
+    [mapType, rows, cols, mapKey]
   )
 
   useEffect(() => {
@@ -392,7 +393,7 @@ function App() {
         <button 
           onClick={async () => {
             if (!Array.isArray(await map.forwardSearch(speed))) {
-              alert('destination unreachable')
+              alert('destination unreachable (try regenerating the map)')
             }
           }}
           disabled={map.loading}
@@ -403,7 +404,7 @@ function App() {
         <button 
           onClick={async () => {
             if (!Array.isArray(await map.backwardSearch(speed))) {
-              alert('destination unreachable')
+              alert('destination unreachable (try regenerating the map)')
             }
           }}
           disabled={map.loading}
@@ -417,7 +418,7 @@ function App() {
           ))}
         </select>
 
-        <select onChange={e => setSpeed(parseInt(e.target.value))} disabled={map.loading}>
+        <select value={speed} onChange={e => setSpeed(parseInt(e.target.value))} disabled={map.loading}>
           {Array(21).fill(0).map((_,i) => (
             <option key={i} value={i}>
               Speed: {i}
@@ -430,7 +431,14 @@ function App() {
           disabled={!map.loading}
         >
           Stop search
-        </button>  
+        </button> 
+
+        <button
+          onClick={refreshMap}
+          disabled={map.loading}
+        >
+          Regenerate map
+        </button> 
       </FlexRow>
     </Page>
   );

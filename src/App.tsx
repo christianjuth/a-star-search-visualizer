@@ -5,6 +5,8 @@ import Heap from 'heap';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { use100vh } from 'react-div-100vh';
 import styled from 'styled-components';
+import { Modal } from 'react-responsive-modal';
+import 'react-responsive-modal/styles.css';
 
 const BLOCK_SIZE = 4;
 
@@ -22,6 +24,16 @@ const Page = styled.div`
 const FlexRow = styled.div`
   display: flex;
   flex-direction: row;
+`
+
+const FlexCol = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-width: 300px;
+
+  & > * {
+    margin: 5px 0;
+  }
 `
 
 function useSignal() {
@@ -57,6 +69,8 @@ class Node {
   isVisited = false
   highlighted = false
   newNode = true
+  adaptive = false
+  aValue: number | null = null
 
   constructor({ isStart, isDestination, x, y, generator }: { isStart?: boolean, isDestination?: boolean, x: number, y: number, generator: (x: number, y: number) => boolean }) {
     this.x = x
@@ -79,6 +93,9 @@ class Node {
   }
 
   getValue() {
+    if (this.adaptive && this.aValue !== null) {
+      return this.aValue
+    }
     return this.manhattanDistance + this.gValue
   }
 
@@ -184,7 +201,7 @@ class Map {
     }
   }
 
-  async search(startCoords: number[], destCoords: number[], speed: number) {
+  async search(startCoords: number[], destCoords: number[], speed: number, adaptive = false) {
     if (this.loading) {
       return
     }
@@ -200,6 +217,7 @@ class Map {
     const start = this.data[startCoords[1]][startCoords[0]]
     start.gValue = 0
     start.isVisited = true
+    start.adaptive = false
     heap.push(start)
     this.updatedNodes.push(start)
     let heapLength = 1
@@ -236,6 +254,7 @@ class Map {
           const neightborGValue = gValues[crnt.getId()] + 1
           gValues[neighbor.getId()] = neightborGValue
           neighbor.gValue = neightborGValue
+          neighbor.adaptive = adaptive
           heap.push(neighbor)
           heapLength += 1
           this.updatedNodes.push(neighbor)
@@ -259,6 +278,8 @@ class Map {
     let crnt: typeof destNode | null = destNode
     
     while (crnt && prevNodes[crnt.getId()]) {
+      crnt.aValue = path.length
+
       this.updatedNodes.push(crnt)
       if (this.stop) {
         this.loading = false
@@ -287,8 +308,8 @@ class Map {
     return this.search(this.start, this.dest, speed)
   }
 
-  backwardSearch(speed: number) {
-    return this.search(this.dest, this.start, speed)
+  adaptiveSearch(speed: number) {
+    return this.search(this.start, this.dest, speed, true)
   }
 
   dispatchEvent(type = 'change') {
@@ -325,7 +346,7 @@ function drawNode(ctx: CanvasRenderingContext2D, node: InstanceType<typeof Node>
   } else if (node.isStart) {
     backgroundColor = "green"
   } else if (node.isDestination) {
-    backgroundColor = "blue"
+    backgroundColor = "#ff007f"
   } else if (node.isBlocked) {
     backgroundColor = "white"
   } else if(node.isVisited) {
@@ -370,6 +391,7 @@ function App() {
   const pageHeight = use100vh() ?? 0
   const rows = Math.floor(pageHeight / BLOCK_SIZE)
   const cols = Math.floor((typeof window !== 'undefined' ? window.innerWidth : 0) / BLOCK_SIZE)
+  const [modalOpen, setModalOpen] = useState(false)
 
   const map = useMemo(
     () => new Map(
@@ -386,61 +408,74 @@ function App() {
   }, [map, refresh])
 
   return (
-    <Page style={{minHeight: pageHeight}}>
-      <CanvasGrid map={map} />
+    <>
+      <Page style={{minHeight: pageHeight}}>
+        <CanvasGrid map={map} />
 
-      <FlexRow style={{marginTop: 5}}>
-        <button 
-          onClick={async () => {
-            if (!Array.isArray(await map.forwardSearch(speed))) {
-              alert('destination unreachable (try regenerating the map)')
-            }
-          }}
-          disabled={map.loading}
-        >
-          Forward search
-        </button>
+        <FlexRow style={{marginTop: 5}}>
+          <button 
+            onClick={async () => {
+              if (!Array.isArray(await map.forwardSearch(speed))) {
+                alert('destination unreachable (try regenerating the map)')
+              }
+            }}
+            disabled={map.loading}
+          >
+            Search
+          </button>
 
-        <button 
-          onClick={async () => {
-            if (!Array.isArray(await map.backwardSearch(speed))) {
-              alert('destination unreachable (try regenerating the map)')
-            }
-          }}
-          disabled={map.loading}
-        >
-          Backward search
-        </button>  
+          {/* <button 
+            onClick={async () => {
+              if (!Array.isArray(await map.adaptiveSearch(speed))) {
+                alert('destination unreachable (try regenerating the map)')
+              }
+            }}
+            disabled={map.loading}
+          >
+            Adaptive search
+          </button> */}
 
-        <select value={mapType} onChange={e => setMapType(e.target.value)} disabled={map.loading}>
-          {['random', 'perlin', 'maze'].map(option => (
-            <option key={option} value={option}>Map type: {option}</option>
-          ))}
-        </select>
+          <button 
+            onClick={() => map.stopSearch()}
+            disabled={!map.loading}
+          >
+            Stop search
+          </button> 
 
-        <select value={speed} onChange={e => setSpeed(parseInt(e.target.value))} disabled={map.loading}>
-          {Array(21).fill(0).map((_,i) => (
-            <option key={i} value={i}>
-              Speed: {i}
-            </option>
-          ))}
-        </select>
+          <button onClick={() => setModalOpen(true)}>Open settings</button>
+        </FlexRow>
+      </Page>
 
-        <button 
-          onClick={() => map.stopSearch()}
-          disabled={!map.loading}
-        >
-          Stop search
-        </button> 
+      <Modal 
+        open={modalOpen} 
+        onClose={() => setModalOpen(false)} 
+        blockScroll
+      >
+        <FlexCol>
+          <h2>Search settings</h2>
+          <select value={mapType} onChange={e => setMapType(e.target.value)} disabled={map.loading}>
+            {['random', 'perlin', 'maze'].map(option => (
+              <option key={option} value={option}>Map type: {option}</option>
+            ))}
+          </select>
 
-        <button
-          onClick={refreshMap}
-          disabled={map.loading}
-        >
-          Regenerate map
-        </button> 
-      </FlexRow>
-    </Page>
+          <select value={speed} onChange={e => setSpeed(parseInt(e.target.value))} disabled={map.loading}>
+            {Array(21).fill(0).map((_,i) => (
+              <option key={i} value={i}>
+                Animation speed: {i === 0 ? 'instant' : i}
+              </option>
+            ))}
+          </select>
+
+          <button
+            onClick={refreshMap}
+            disabled={map.loading}
+          >
+            Regenerate map
+          </button> 
+        </FlexCol>
+      </Modal>
+    </>
   );
 }
 
